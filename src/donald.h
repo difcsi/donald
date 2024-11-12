@@ -37,6 +37,11 @@
 #define DONALD_NAME "donald"
 #endif
 
+#ifndef debug_printf
+#define debug_printf(lvl, fmt, ...) \
+   do { fprintf(stderr, DONALD_NAME ": " fmt , ##__VA_ARGS__); } while(0)
+#endif
+
 #ifndef SYSTEM_LDSO_PATH
 #if defined(__x86_64__)
 #define SYSTEM_LDSO_PATH "/lib64/ld-linux-x86-64.so.2"
@@ -55,6 +60,23 @@ extern unsigned long page_size HIDDEN;
 extern void *sp_on_entry HIDDEN;
 extern ElfW(Dyn) _DYNAMIC[];
 
+/* FIXME: this is really a lightly expanded version of a standard SVr4 struct link_map.
+ * Perhaps we can copy its initial fields? We lack l_name currently, but could use "". */
+struct loadee_info
+{
+	uintptr_t dynamic_vaddr;
+	uintptr_t base_addr;
+	uintptr_t phdrs_addr;
+	ElfW(Ehdr) ehdr;
+	ElfW(Dyn)* dynamic;
+	size_t dynamic_size;
+	char errmsg[400];
+};
+
+struct loadee_info
+load_file(const char *loadee_path, uintptr_t loadee_base_addr_hint,
+	ElfW(Phdr) *out_phdrs, unsigned *p_n_out_phdrs) HIDDEN;
+
 int main(int argc, char **argv) HIDDEN;
 int load_one_phdr(unsigned long base_addr, int fd, unsigned long vaddr, unsigned long offset,
 	unsigned long memsz, unsigned long filesz, _Bool read, _Bool write, _Bool exec) HIDDEN;
@@ -63,6 +85,8 @@ uintptr_t __get_from_tls_reg_offset(unsigned off);
 #ifdef CHAIN_LOADER
 ElfW(Dyn) *find_or_create_dt_debug(uintptr_t inferior_load_addr, uintptr_t inferior_dynamic_vaddr,
 	size_t our_dynamic_size, uintptr_t inferior_r_debug_vaddr) HIDDEN;
+void populate_dt_debug(ElfW(Dyn) *d, uintptr_t inferior_load_addr,
+	uintptr_t inferior_dynamic_vaddr, uintptr_t inferior_r_debug_vaddr) HIDDEN;
 #endif
 
 #endif
