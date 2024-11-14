@@ -314,6 +314,7 @@ int main(int argc, char **argv)
 				strtab = (const unsigned char *)(inferior.base_addr + dyn->d_un.d_ptr);
 				symtab_end = (ElfW(Sym) *)strtab;
 				break;
+			default: break;
 		}
 	}
 	ElfW(Sym) *found_r_debug_sym = NULL;
