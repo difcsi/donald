@@ -1,9 +1,0 @@
-syntax: glob
-*.o
-*.so
-gerald/*
-src/donald.lds
-makefile
-test/true/true
-.*.d
-contrib/*

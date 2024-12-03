@@ -1,10 +1,20 @@
 default: donald.so 
 
-include ../config.mk
 THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
+srcroot := $(realpath $(dir $(THIS_MAKEFILE)))/..
 
 CFLAGS += -std=gnu99 -g -fPIC
 CFLAGS += -fno-stack-protector
+
+CONTRIB := $(srcroot)/contrib
+CONFIG ?= $(CONTRIB)/config.mk
+
+$(CONTRIB)/config.mk:
+	$(MAKE) -C $(CONTRIB)
+
+include $(CONFIG)
+
+
 
 # Thanks to Dan Williams for the recipes that my link commands were based on.
 # http://www.cs.virginia.edu/~dww4s/articles/ld_linux.html
