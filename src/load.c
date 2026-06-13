@@ -85,9 +85,7 @@ load_from_fd(int loadee_fd, const char *loadee_path /* for diagnostic only */,
 	ElfW(Phdr) *out_phdrs, unsigned *p_n_out_phdrs)
 {
 	struct loadee_info loadee = LOADEE_FAILED;
-	struct stat loadee_stat;
-	int ret = fstat(loadee_fd, &loadee_stat);
-	if (ret != 0) { die("could not stat %s\n", loadee_path); }
+	int ret;
 
 	// read the ELF header
 	ssize_t nread;
@@ -121,17 +119,28 @@ load_from_fd(int loadee_fd, const char *loadee_path /* for diagnostic only */,
 			loadee_path);
 	}
 
-	// process the PT_LOADs
-	off_t newloc = lseek(loadee_fd, loadee.ehdr.e_phoff, SEEK_SET);
+	// process the PT_LOADs -- read the whole program header table in one pread
 	ElfW(Phdr) phdrs[loadee.ehdr.e_phnum];
-	for (unsigned i = 0; i < loadee.ehdr.e_phnum; ++i)
+	size_t phent = loadee.ehdr.e_phentsize;
+	size_t pht_bytes = (size_t) loadee.ehdr.e_phnum * phent;
+	if (phent == sizeof (ElfW(Phdr)))
 	{
-		off_t off = loadee.ehdr.e_phoff + i * loadee.ehdr.e_phentsize;
-		newloc = lseek(loadee_fd, off, SEEK_SET);
-		if (newloc != off) die("could not seek to program header %d in %s\n", i, loadee_path);
-		size_t ntoread = MIN(sizeof phdrs[0], loadee.ehdr.e_phentsize);
-		nread = read(loadee_fd, &phdrs[i], ntoread);
-		if (nread != ntoread) die("could not read program header %d in %s\n", i, loadee_path);
+		// common case: entries are exactly our Phdr size, read straight in
+		nread = pread(loadee_fd, phdrs, pht_bytes, loadee.ehdr.e_phoff);
+		if (nread != (ssize_t) pht_bytes) die("could not read program header table in %s\n", loadee_path);
+	}
+	else
+	{
+		// unusual e_phentsize: read the raw table once, then copy each entry out
+		unsigned char buf[pht_bytes];
+		nread = pread(loadee_fd, buf, pht_bytes, loadee.ehdr.e_phoff);
+		if (nread != (ssize_t) pht_bytes) die("could not read program header table in %s\n", loadee_path);
+		size_t ntocopy = MIN(sizeof phdrs[0], phent);
+		for (unsigned i = 0; i < loadee.ehdr.e_phnum; ++i)
+		{
+			memset(&phdrs[i], 0, sizeof phdrs[i]);
+			memcpy(&phdrs[i], buf + i * phent, ntocopy);
+		}
 	}
 	/* Now we've snarfed the phdrs. But remember that we want to map them
 	 * without holes. To do this, calculate the maximum vaddr we need,

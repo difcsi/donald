@@ -5,7 +5,6 @@ void __attribute__((noreturn)) enter(void *entry_point)
 {
 	debug_printf(1, "jumping to inferior entry point %p with rsp %p\n",
 	(void*) entry_point, sp_on_entry);
-	fflush(stderr);
 	__asm__ volatile (
 #if defined(__x86_64__)
 	  "movq %0, %%rsp\n"

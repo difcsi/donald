@@ -37,9 +37,16 @@
 #define DONALD_NAME "donald"
 #endif
 
+#ifndef DONALD_DEBUG_LEVEL
+/* Verbosity threshold for debug_printf(). Level 0 (errors/diagnostics, used by
+ * die()) is shown; higher-level trace is silenced by default. Raise this at
+ * build time (e.g. -DDONALD_DEBUG_LEVEL=1) to get the chatty per-launch trace. */
+#define DONALD_DEBUG_LEVEL 0
+#endif
+
 #ifndef debug_printf
 #define debug_printf(lvl, fmt, ...) \
-   do { fprintf(stderr, DONALD_NAME ": " fmt , ##__VA_ARGS__); } while(0)
+   do { if ((lvl) <= DONALD_DEBUG_LEVEL) { fprintf(stderr, DONALD_NAME ": " fmt , ##__VA_ARGS__); } } while(0)
 #endif
 
 #ifndef SYSTEM_LDSO_PATH
