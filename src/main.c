@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <err.h>
@@ -16,22 +15,19 @@ int main(int argc, char **argv)
 	// we need an argument
 	if (argc < 2) { die("no program specified\n"); }
 	
-	struct stat proc_exe;
-	struct stat argv0;
-	int ret = stat("/proc/self/exe", &proc_exe);
-	if (ret != 0) { die("could not stat /proc/self/exe\n"); }
-	ret = stat(argv[0], &argv0);
-	if (ret != 0) { die("could not stat %s\n", argv[0]); }
-	
-	// were we invoked by name, or as a .interp?
-	int argv_program_ind;
-	if (proc_exe.st_dev == argv0.st_dev
-			&& proc_exe.st_ino == argv0.st_ino)
+	/* Were we invoked directly (e.g. `donald ./prog`), or as another
+	 * program's .interp? When the kernel loads us as an interpreter it sets
+	 * AT_BASE in the auxv to our load address; when we are run directly there
+	 * is no interpreter, so the kernel leaves AT_BASE as 0. Reading the auxv
+	 * we were already handed avoids stat()ing /proc/self/exe and argv[0] on
+	 * every launch. */
+	uintptr_t at_base = 0;
+	for (ElfW(auxv_t) *aux = p_auxv; aux->a_type != AT_NULL; ++aux)
 	{
-		// we were invoked as an executable
-		argv_program_ind = 1;
-	} else argv_program_ind = 0;
-	
+		if (aux->a_type == AT_BASE) { at_base = aux->a_un.a_val; break; }
+	}
+	int argv_program_ind = (at_base != 0) ? 0 : 1;
+
 	if (argc <= argv_program_ind) { die("no program specified\n"); }
 
 	/* We have a program to run. Let's read it. */
@@ -77,7 +73,7 @@ int main(int argc, char **argv)
 			_Bool write = (p_phdr[i].p_flags & PF_W);
 			_Bool exec = (p_phdr[i].p_flags & PF_X);
 
-			ret = load_one_phdr(base_addr, exe_fd, p_phdr[i].p_vaddr,
+			int ret = load_one_phdr(base_addr, exe_fd, p_phdr[i].p_vaddr,
 				p_phdr[i].p_offset, p_phdr[i].p_memsz, p_phdr[i].p_filesz, read, write, exec);
 			switch (ret)
 			{
