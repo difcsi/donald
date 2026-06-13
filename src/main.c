@@ -3,7 +3,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <sys/mman.h>
+#include <stdlib.h>
 #include <err.h>
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
 #include "donald.h"
@@ -37,16 +37,12 @@ int main(int argc, char **argv)
 	/* We have a program to run. Let's read it. */
 	int exe_fd = open(argv[argv_program_ind], O_RDONLY);
 	if (exe_fd == -1) { die("could not open %s\n", argv[argv_program_ind]); }
-	ret = fstat(exe_fd, &argv0);
-	if (ret != 0) { die("could not open %s\n", argv[argv_program_ind]); }
-	
-	// mmap it all
-	unsigned long mapped_size = argv0.st_size;
-	char *mapping = mmap(NULL, mapped_size, PROT_READ, MAP_PRIVATE, exe_fd, 0);
-	if (mapping == MAP_FAILED) { die("could not mmap %s\n", argv[argv_program_ind]); }
-	
-	// read the elf header
-	ElfW(Ehdr) *p_hdr = (void*) mapping;
+	// read just the ELF header -- no need to map the whole file
+	ElfW(Ehdr) ehdr;
+	ssize_t nread = pread(exe_fd, &ehdr, sizeof ehdr, 0);
+	if (nread != sizeof ehdr) { die("could not read ELF header from %s\n", argv[argv_program_ind]); }
+
+	ElfW(Ehdr) *p_hdr = &ehdr;
 	// check it's a file we can grok
 	if (p_hdr->e_ident[EI_MAG0] != 0x7f
 			|| p_hdr->e_ident[EI_MAG1] != 'E'
@@ -64,8 +60,14 @@ int main(int argc, char **argv)
 		die("unsupported file: %s\n", argv[argv_program_ind]);
 	}
 	
-	// process the PT_LOADs
-	ElfW(Phdr) *p_phdr = (void*) (mapping + p_hdr->e_phoff);
+	// read the program header table -- it's all we need to load the file
+	if (p_hdr->e_phnum == 0) { die("file %s has no program headers\n", argv[argv_program_ind]); }
+	size_t phdrs_size = (size_t) p_hdr->e_phnum * p_hdr->e_phentsize;
+	ElfW(Phdr) *p_phdr = malloc(phdrs_size);
+	if (!p_phdr) { die("could not allocate program header table for %s\n", argv[argv_program_ind]); }
+	nread = pread(exe_fd, p_phdr, phdrs_size, p_hdr->e_phoff);
+	if (nread != (ssize_t) phdrs_size)
+	{ free(p_phdr); die("could not read program header table from %s\n", argv[argv_program_ind]); }
 	uintptr_t base_addr = 0;
 	for (unsigned i = 0; i < p_hdr->e_phnum; ++i)
 	{
@@ -91,10 +93,10 @@ int main(int argc, char **argv)
 	// do relocations!
 
 	// grab the entry point
-	register unsigned long entry_point = p_hdr->e_entry;
-	
+	unsigned long entry_point = p_hdr->e_entry;
+
 	// now we're finished with the file
-	munmap(mapping, mapped_size);
+	free(p_phdr);
 	close(exe_fd);
 	
 	// jump to the entry point

@@ -148,7 +148,9 @@ int _start(void)
 	rsp_on_entry = bp_after_main_prologue + BP_TO_SP_FIXUP;
 	preinit(rsp_on_entry, &argc, &argv); // get us a sane environment
 	
+#ifdef DONALD_DEBUG
 	printf("Hello from " DONALD_NAME "!\n");
+#endif
 	
 	int ret = main(argc, argv);
 	
